@@ -3,8 +3,10 @@ import api from './api/axios';
 import Signup from './components/Signup';
 import Login from './components/Login';
 import './App.css';
+import IndoraMap from './components/IndoraMap';
 
 function App() {
+  // 1. Define State
   const [userState, setUserState] = useState({ 
     isLoggedIn: false, 
     username: '', 
@@ -12,154 +14,221 @@ function App() {
   });
   const [orders, setOrders] = useState([]);
   const [showLogin, setShowLogin] = useState(true);
+  const [isOnline, setIsOnline] = useState(false); // NEW: Online Status
 
-  // --- LOGIN HANDLER ---
+  // 2. Derive active ride from state
+  const activeRide = orders.find(o => o.status.toLowerCase() === 'accepted');
+
+  // --- API Handlers ---
   const handleLogin = (username) => {
-    setUserState({ 
-        isLoggedIn: true, 
-        username: username, 
-        isVerified: true // Bypassing verification for testing
-    });
+    setUserState({ isLoggedIn: true, username: username, isVerified: true });
   };
 
-  // --- FETCH ORDERS LOGIC ---
+  const toggleOnline = async () => {
+    try {
+        // Ensure the slash / at the end is present if your Django settings require it
+        const response = await api.post('users/driver_profile/toggle_status/'); 
+        setIsOnline(response.data.is_online);
+    } catch (error) {
+        console.error("Toggle failed:", error);
+        // Temporary fallback to see the UI change during debugging
+        setIsOnline(!isOnline); 
+    }
+};
+
+  const fetchOrders = async () => {
+    try {
+      const response = await api.get('rides/');
+      const activeOrNew = response.data.filter(o => {
+        const s = o.status.toLowerCase();
+        return s === 'requested' || s === 'accepted';
+      });
+      setOrders(activeOrNew);
+    } catch (error) { 
+      console.error("Fetch error:", error); 
+    }
+  };
+
+  // --- Effects ---
   useEffect(() => {
     let interval;
-    if (userState.isLoggedIn && userState.isVerified) {
-      const fetchOrders = async () => {
-        try {
-          const response = await api.get('rides/');
-          // Filters for both new requests and already accepted active rides
-          const activeOrNew = response.data.filter(o => {
-            const s = o.status.toLowerCase();
-            return s === 'requested' || s === 'accepted';
-          });
-          setOrders(activeOrNew);
-        } catch (error) { 
-            console.error("Fetch error:", error); 
-        }
-      };
-
+    // Only start scanning if logged in AND online
+    if (userState.isLoggedIn && isOnline) {
       fetchOrders();
-      interval = setInterval(fetchOrders, 3000); // Poll every 3 seconds
+      interval = setInterval(fetchOrders, 3000);
+    } else if (!isOnline) {
+      setOrders([]); // Clear requests if offline
     }
     return () => clearInterval(interval);
-  }, [userState.isLoggedIn, userState.isVerified]);
+  }, [userState.isLoggedIn, isOnline]);
 
-  // --- ACTION: ACCEPT RIDE ---
   const acceptOrder = async (id) => {
     try {
       await api.post(`rides/${id}/accept_ride/`);
-      alert("✅ Ride Accepted!");
-      // Immediate UI update
-      setOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'accepted' } : o));
+      fetchOrders(); 
     } catch (error) { 
-        alert("❌ Error accepting ride"); 
+      alert("Error accepting ride"); 
     }
   };
 
-  // --- ACTION: FINISH RIDE ---
   const completeRide = async (id) => {
     try {
       await api.patch(`rides/${id}/`, { status: 'completed' });
       alert("🏁 Trip Finished!");
-      // Remove from active list
       setOrders(prev => prev.filter(o => o.id !== id));
     } catch (error) { 
-        console.error("Complete error:", error.response?.data);
-        alert("❌ Error completing ride"); 
+      alert("Error completing ride"); 
     }
   };
 
-  // --- ACTION: SIMULATE MOVEMENT ---
   const moveDriver = async (id) => {
-    // Generate slight random movement near Delhi coords
     const fakeLat = 28.61 + (Math.random() * 0.02);
     const fakeLng = 77.20 + (Math.random() * 0.02);
-
     try {
-      // Sending PATCH to update only GPS coordinates
-      const response = await api.patch(`rides/${id}/`, { 
-        driver_lat: fakeLat, 
-        driver_lng: fakeLng 
-      });
-      console.log(`✅ Moved Order ${id} to:`, fakeLat, fakeLng);
+      await api.patch(`rides/${id}/`, { driver_lat: fakeLat, driver_lng: fakeLng });
+      console.log(`✅ Moved Order ${id} to: ${fakeLat} / ${fakeLng}`);
     } catch (error) { 
-        console.error("❌ Move failed (400 Bad Request):", error.response?.data);
-        alert("Move failed. Check if Backend model has driver_lat/lng fields.");
+      console.error("Move failed:", error.response?.data); 
     }
   };
 
-  // --- AUTH NAVIGATION ---
+  // --- Render Logic ---
   if (!userState.isLoggedIn) {
     return showLogin ? 
       <Login onLoginSuccess={handleLogin} switchToSignup={() => setShowLogin(false)} /> : 
       <Signup onSignupSuccess={handleLogin} />;
   }
 
-  // --- DASHBOARD UI ---
   return (
-    <div className="driver-container" style={{ maxWidth: '500px', margin: 'auto', fontFamily: 'Arial' }}>
-      <header className="header" style={{ background: '#000', color: '#fff', padding: '15px', textAlign: 'center' }}>
-        <h1>🚖 Indora Driver</h1>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', alignItems: 'center' }}>
-            <span>{userState.username}</span>
-            <span className="status-badge" style={{ color: '#2ecc71' }}>🟢 Online</span>
-        </div>
+    <div className="driver-container" style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      
+      {/* 1. Dynamic Header with Toggle */}
+      <header className="header" style={{ 
+        background: isOnline ? '#27ae60' : '#000', 
+        color: '#fff', 
+        padding: '10px 20px', 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        zIndex: 2000,
+        transition: 'background 0.3s ease'
+      }}>
+        <h2 style={{ margin: 0, fontSize: '18px' }}>🚖 Indora Driver</h2>
+        <button 
+            onClick={toggleOnline}
+            style={{ 
+                padding: '8px 16px', 
+                borderRadius: '20px', 
+                border: 'none', 
+                background: '#fff', 
+                color: isOnline ? '#27ae60' : '#000',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                fontSize: '12px'
+            }}
+        >
+            {isOnline ? '🟢 ONLINE' : '⚪ GO ONLINE'}
+        </button>
       </header>
 
-      <div style={{ padding: '20px' }}>
-        <h2 style={{ borderBottom: '2px solid #eee', paddingBottom: '10px' }}>Live Requests</h2>
-        {orders.length === 0 ? (
-          <div style={{ textAlign: 'center', color: '#999', marginTop: '30px' }}>
-            <p>Scanning for nearby rides...</p>
-            <div className="loader"></div> 
-          </div>
-        ) : (
-          orders.map(order => (
-            <div key={order.id} className="order-card" style={{
-              border: '1px solid #ddd', padding: '15px', borderRadius: '12px', 
-              marginBottom: '15px', background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+      {/* 2. Main Body Content */}
+      <div style={{ flex: 1, position: 'relative' }}>
+        
+        {activeRide ? (
+          /* --- NAVIGATION MODE (Full Screen) --- */
+          <div className="navigation-mode" style={{ height: '100%', width: '100%' }}>
+            {/* Floating Top Card */}
+            <div style={{ 
+              position: 'absolute', top: '20px', left: '15px', right: '15px', 
+              zIndex: 1000, background: 'white', padding: '20px', borderRadius: '15px', 
+              boxShadow: '0 8px 30px rgba(0,0,0,0.3)', border: '1px solid #eee' 
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '1.2em', fontWeight: 'bold' }}>₹{order.price}</span>
-                <span style={{ 
-                    background: order.status === 'accepted' ? '#d4edda' : '#eee', 
-                    padding: '2px 8px', borderRadius: '5px', fontSize: '0.8em', textTransform: 'uppercase'
-                }}>
-                    {order.status}
-                </span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, color: '#2ecc71' }}>Active Trip: #{activeRide.id}</h3>
+                <span style={{ fontSize: '12px', background: '#f1f2f6', padding: '4px 8px', borderRadius: '4px', fontWeight: 'bold' }}>OTP: 4592</span>
               </div>
+              <p style={{ margin: '12px 0', fontSize: '15px', fontWeight: '500' }}>
+                🏁 {activeRide.dropoff_address || "Navigating to Destination..."}
+              </p>
               
-              <div style={{ margin: '15px 0', fontSize: '0.9em' }}>
-                <p>📍 <b>Pickup:</b> {order.pickup_address}</p>
-                <p>🏁 <b>Drop:</b> {order.dropoff_address}</p>
-              </div>
-              
-              <div style={{ display: 'flex', gap: '10px' }}>
-                {order.status.toLowerCase() === 'requested' ? (
-                  <button onClick={() => acceptOrder(order.id)} style={{
-                    flex: 1, padding: '12px', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold'
-                  }}>
-                    ACCEPT RIDE
-                  </button>
-                ) : (
-                  <>
-                    <button onClick={() => moveDriver(order.id)} style={{
-                      flex: 1, padding: '12px', background: '#3498db', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer'
-                    }}>
-                      📍 SIMULATE MOVE
-                    </button>
-                    <button onClick={() => completeRide(order.id)} style={{
-                      flex: 1, padding: '12px', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer'
-                    }}>
-                      FINISH TRIP
-                    </button>
-                  </>
-                )}
+              <div style={{ display: 'flex', gap: '12px', marginTop: '15px' }}>
+                <button onClick={() => moveDriver(activeRide.id)} style={{ flex: 1, padding: '12px', background: '#3498db', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  📍 MOVE CAR
+                </button>
+                <button onClick={() => completeRide(activeRide.id)} style={{ flex: 1, padding: '12px', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  🏁 FINISH
+                </button>
               </div>
             </div>
-          ))
+
+            {/* The Map Component */}
+            <IndoraMap 
+              pickup={activeRide.pickup_lat ? [activeRide.pickup_lat, activeRide.pickup_lng] : null} 
+              dropoff={activeRide.dropoff_lat ? [activeRide.dropoff_lat, activeRide.dropoff_lng] : null}
+              driverLocation={activeRide.driver_lat ? [activeRide.driver_lat, activeRide.driver_lng] : null}
+              routeGeometry={activeRide.route_geometry}
+            />
+          </div>
+        ) : (
+          /* --- LIST MODE / OFFLINE VIEW --- */
+          <div style={{ padding: '20px', background: '#f9f9f9', height: '100%', overflowY: 'auto' }}>
+            {!isOnline ? (
+              <div style={{ textAlign: 'center', marginTop: '100px', color: '#666' }}>
+                <div style={{ fontSize: '60px' }}>💤</div>
+                <h3>You are currently Offline</h3>
+                <p>Go online to start receiving ride requests.</p>
+              </div>
+            ) : (
+              <>
+                <h2 style={{ fontSize: '22px', marginBottom: '20px' }}>Available Requests</h2>
+                {orders.length === 0 ? (
+                  <div style={{ textAlign: 'center', marginTop: '40px' }}>
+                    <p>Scanning for nearby rides...</p>
+                    <div className="loader"></div>
+                  </div>
+                ) : (
+                  orders.map(order => (
+                    <div key={order.id} className="order-card" style={{ 
+                      border: 'none', 
+                      padding: '20px', 
+                      borderRadius: '15px', 
+                      marginBottom: '15px', 
+                      background: 'white', 
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.05)' 
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
+                        <span style={{ fontWeight: 'bold', color: '#2ecc71', fontSize: '20px' }}>₹{order.price}</span>
+                        <span style={{ fontSize: '13px', color: '#999', background: '#f8f9fa', padding: '4px 8px', borderRadius: '5px' }}>
+                          {order.distance_km} km
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '14px', color: '#444' }}>
+                        <p style={{ margin: '5px 0' }}>📍 <b>From:</b> {order.pickup_address}</p>
+                        <p style={{ margin: '5px 0' }}>🏁 <b>To:</b> {order.dropoff_address}</p>
+                      </div>
+                      <button 
+                        onClick={() => acceptOrder(order.id)} 
+                        style={{ 
+                          width: '100%', 
+                          marginTop: '15px', 
+                          padding: '14px', 
+                          background: '#27ae60', 
+                          color: 'white', 
+                          border: 'none', 
+                          borderRadius: '10px', 
+                          cursor: 'pointer', 
+                          fontWeight: 'bold',
+                          fontSize: '16px'
+                        }}
+                      >
+                        ACCEPT RIDE
+                      </button>
+                    </div>
+                  ))
+                )}
+              </>
+            )}
+          </div>
         )}
       </div>
     </div>
