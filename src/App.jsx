@@ -52,6 +52,29 @@ const handleLogin = (username, token) => {
     isVerified: true 
   });
 };
+
+
+const handleLogout = () => {
+  // 1. Remove the JWT token from browser storage so API calls stop working
+  localStorage.removeItem('access_token');
+  
+  // 2. Force the driver offline for safety
+  setIsOnline(false);
+  
+  // 3. Reset state to trigger the login screen redirect
+  setUserState({ 
+    isLoggedIn: false, 
+    username: '', 
+    isVerified: false 
+  });
+  
+  // 4. Clear the local orders list
+  setOrders([]);
+  
+  console.log("Logout successful: Token cleared.");
+};
+
+
  const toggleOnline = async () => {
     // Debug: Check if token exists before trying the request
     const token = localStorage.getItem('access_token');
@@ -135,33 +158,45 @@ const handleLogin = (username, token) => {
     <div className="driver-container" style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       
       {/* 1. Dynamic Header with Toggle */}
-      <header className="header" style={{ 
-        background: isOnline ? '#27ae60' : '#000', 
-        color: '#fff', 
-        padding: '10px 20px', 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        zIndex: 2000,
-        transition: 'background 0.3s ease'
-      }}>
-        <h2 style={{ margin: 0, fontSize: '18px' }}>🚖 Indora Driver</h2>
+      {/* Replace your current <header> block with this updated version */}
+<header className="header" style={{ 
+    background: isOnline ? '#27ae60' : '#000', 
+    color: '#fff', 
+    padding: '10px 20px', 
+    display: 'flex', 
+    justifyContent: 'space-between', 
+    alignItems: 'center',
+    zIndex: 2000,
+    transition: 'background 0.3s ease'
+}}>
+    <h2 style={{ margin: 0, fontSize: '18px' }}>🚖 Indora Driver</h2>
+    
+    <div style={{ display: 'flex', gap: '10px' }}>
+        {/* Availability Toggle */}
         <button 
             onClick={toggleOnline}
             style={{ 
-                padding: '8px 16px', 
-                borderRadius: '20px', 
-                border: 'none', 
-                background: '#fff', 
-                color: isOnline ? '#27ae60' : '#000',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                fontSize: '12px'
+                padding: '8px 16px', borderRadius: '20px', border: 'none', 
+                background: '#fff', color: isOnline ? '#27ae60' : '#000',
+                fontWeight: 'bold', cursor: 'pointer', fontSize: '12px'
             }}
         >
             {isOnline ? '🟢 ONLINE' : '⚪ GO ONLINE'}
         </button>
-      </header>
+
+        {/* Logout Action */}
+        <button 
+            onClick={handleLogout}
+            style={{ 
+                padding: '8px 16px', borderRadius: '20px', border: '1px solid white', 
+                background: 'transparent', color: 'white',
+                fontWeight: 'bold', cursor: 'pointer', fontSize: '12px'
+            }}
+        >
+            🚪 LOGOUT
+        </button>
+    </div>
+</header>
 
       {/* 2. Main Body Content */}
       <div style={{ flex: 1, position: 'relative' }}>
