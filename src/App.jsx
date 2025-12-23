@@ -18,20 +18,52 @@ function App() {
 
   // 2. Derive active ride from state
   const activeRide = orders.find(o => o.status.toLowerCase() === 'accepted');
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  try {
+    const response = await api.post('auth/login/', { 
+      username: formData.username, // Must match your User model
+      password: formData.password 
+    });
 
+    const token = response.data.access; // SimpleJWT uses 'access'
+    if (token) {
+      onLoginSuccess(formData.username, token);
+    }
+  } catch (error) {
+    console.log("Login Error:", error.response?.data);
+    alert("Invalid credentials. Check Admin if user is Active.");
+  }
+};
   // --- API Handlers ---
-  const handleLogin = (username) => {
-    setUserState({ isLoggedIn: true, username: username, isVerified: true });
-  };
+ // inside indora_driver/src/App.jsx
 
-  const toggleOnline = async () => {
+const handleLogin = (username, token) => {
+  if (!token) {
+    console.error("Login failed: No token provided");
+    return;
+  }
+  
+  localStorage.setItem('access_token', token);
+  
+  setUserState({ 
+    isLoggedIn: true, 
+    username: username, 
+    isVerified: true 
+  });
+};
+ const toggleOnline = async () => {
+    // Debug: Check if token exists before trying the request
+    const token = localStorage.getItem('access_token');
+    console.log("Current Token:", token);
+
     try {
-        // Ensure the slash / at the end is present if your Django settings require it
+        // Updated path to match the router registration
         const response = await api.post('users/driver_profile/toggle_status/'); 
         setIsOnline(response.data.is_online);
     } catch (error) {
-        console.error("Toggle failed:", error);
-        // Temporary fallback to see the UI change during debugging
+        console.error("Toggle failed:", error.response?.data || error.message);
+        // Fallback for UI testing
         setIsOnline(!isOnline); 
     }
 };
