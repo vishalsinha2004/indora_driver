@@ -26,3 +26,170 @@ html, body, #root {
   height: 100vh;
   width: 100vw;
 }
+/* src/App.css */
+.driver-app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: #f4f7f6;
+  font-family: 'Inter', sans-serif;
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  color: white;
+  transition: background 0.3s ease;
+}
+
+.app-header.online { background-color: #2ecc71; }
+.app-header.offline { background-color: #2c3e50; }
+
+.status-btn {
+  background: white;
+  border: none;
+  padding: 8px 15px;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.main-content { flex: 1; overflow: hidden; position: relative; }
+
+/* Job Card Styling */
+.job-card {
+  background: white;
+  margin: 15px;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+}
+
+.job-price {
+  font-size: 24px;
+  font-weight: 800;
+  color: #2ecc71;
+  margin-bottom: 10px;
+}
+
+.accept-btn {
+  width: 100%;
+  padding: 15px;
+  background: #2ecc71;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+  margin-top: 15px;
+}
+
+/* Trip Overlay Style */
+.trip-status-card {
+  position: absolute;
+  top: 15px;
+  left: 15px;
+  right: 15px;
+  z-index: 1000;
+  background: white;
+  padding: 15px;
+  border-radius: 12px;
+  box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+}
+
+.map-wrapper { height: 100%; width: 100%; }
+
+.address-item { display: flex; gap: 10px; margin-bottom: 10px; }
+.address-item label { font-size: 11px; color: #888; text-transform: uppercase; }
+.address-item p { margin: 0; font-size: 14px; font-weight: 500; }
+.tab-navigation {
+  display: flex;
+  background: white;
+  border-bottom: 2px solid #eee;
+}
+
+.tab-navigation button {
+  flex: 1;
+  padding: 15px;
+  border: none;
+  background: none;
+  font-weight: bold;
+  cursor: pointer;
+  color: #666;
+}
+
+.tab-navigation button.active-tab {
+  color: #000;
+  border-bottom: 3px solid #27ae60;
+}
+
+.history-card {
+  background: white;
+  margin: 10px;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  border-left: 4px solid #27ae60;
+}
+
+.status-pill.completed { background: #e8f5e9; color: #2e7d32; padding: 2px 8px; border-radius: 4px; display: inline-block; font-size: 12px; }
+.status-pill.cancelled { background: #ffebee; color: #c62828; padding: 2px 8px; border-radius: 4px; display: inline-block; font-size: 12px; }
+
+
+
+/* Wallet Dashboard */
+.wallet-card {
+  background: linear-gradient(135deg, #2c3e50, #000000);
+  color: white;
+  padding: 20px;
+  border-radius: 15px;
+  margin: 15px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+
+.wallet-card h3 {
+  margin-top: 0;
+  font-size: 16px;
+  opacity: 0.8;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.stat-box {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 10px;
+  border-radius: 10px;
+  text-align: center;
+}
+
+.stat-box label {
+  display: block;
+  font-size: 10px;
+  color: #bdc3c7;
+  margin-bottom: 5px;
+}
+
+.stat-box .amount {
+  font-size: 18px;
+  font-weight: 800;
+  color: #2ecc71;
+}
+
+/* History Improvements */
+.address-text {
+  font-size: 13px;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 5px 0;
+}

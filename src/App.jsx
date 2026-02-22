@@ -2,302 +2,216 @@ import React, { useState, useEffect } from 'react';
 import api from './api/axios';
 import Signup from './components/Signup';
 import Login from './components/Login';
-import './App.css';
 import IndoraMap from './components/IndoraMap';
+import './App.css';
 
 function App() {
-  // 1. Define State
   const [userState, setUserState] = useState({ 
-    isLoggedIn: false, 
+    isLoggedIn: !!localStorage.getItem('access_token'), 
     username: '', 
-    isVerified: false 
   });
   const [orders, setOrders] = useState([]);
+  const [history, setHistory] = useState([]); 
+  const [view, setView] = useState('jobs');    
   const [showLogin, setShowLogin] = useState(true);
-  const [isOnline, setIsOnline] = useState(false); // NEW: Online Status
+  const [isOnline, setIsOnline] = useState(false);
 
-  // 2. Derive active ride from state
   const activeRide = orders.find(o => o.status.toLowerCase() === 'accepted');
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  try {
-    const response = await api.post('auth/login/', { 
-      username: formData.username, // Must match your User model
-      password: formData.password 
+
+  // --- WALLET CALCULATIONS ---
+  const calculateEarnings = () => {
+    const now = new Date();
+    const todayStr = now.toLocaleDateString();
+    
+    // Start of week (Sunday)
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    let todayTotal = 0;
+    let weekTotal = 0;
+    let allTimeTotal = 0;
+
+    history.forEach(item => {
+      const itemDate = new Date(item.created_at);
+      const price = parseFloat(item.price || 0);
+
+      allTimeTotal += price;
+      
+      // Check if Today
+      if (itemDate.toLocaleDateString() === todayStr) {
+        todayTotal += price;
+      }
+
+      // Check if This Week
+      if (itemDate >= startOfWeek) {
+        weekTotal += price;
+      }
     });
 
-    const token = response.data.access; // SimpleJWT uses 'access'
-    if (token) {
-      onLoginSuccess(formData.username, token);
+    return { todayTotal, weekTotal, allTimeTotal };
+  };
+
+  const { todayTotal, weekTotal, allTimeTotal } = calculateEarnings();
+
+  const getServiceIcon = (type) => {
+    switch (type?.toLowerCase()) {
+      case 'two-wheeler': return '🛵';
+      case 'truck': return '🚛';
+      case 'mini': return '🚐';
+      case 'sedan': return '🚗';
+      default: return '📦';
     }
-  } catch (error) {
-    console.log("Login Error:", error.response?.data);
-    alert("Invalid credentials. Check Admin if user is Active.");
-  }
-};
-  // --- API Handlers ---
- // inside indora_driver/src/App.jsx
-
-const handleLogin = (username, token) => {
-  if (!token) {
-    console.error("Login failed: No token provided");
-    return;
-  }
-  
-  localStorage.setItem('access_token', token);
-  
-  setUserState({ 
-    isLoggedIn: true, 
-    username: username, 
-    isVerified: true 
-  });
-};
-
-
-const handleLogout = () => {
-  // 1. Remove the JWT token from browser storage so API calls stop working
-  localStorage.removeItem('access_token');
-  
-  // 2. Force the driver offline for safety
-  setIsOnline(false);
-  
-  // 3. Reset state to trigger the login screen redirect
-  setUserState({ 
-    isLoggedIn: false, 
-    username: '', 
-    isVerified: false 
-  });
-  
-  // 4. Clear the local orders list
-  setOrders([]);
-  
-  console.log("Logout successful: Token cleared.");
-};
-
-
- const toggleOnline = async () => {
-    // Debug: Check if token exists before trying the request
-    const token = localStorage.getItem('access_token');
-    console.log("Current Token:", token);
-
-    try {
-        // Updated path to match the router registration
-        const response = await api.post('users/driver_profile/toggle_status/'); 
-        setIsOnline(response.data.is_online);
-    } catch (error) {
-        console.error("Toggle failed:", error.response?.data || error.message);
-        // Fallback for UI testing
-        setIsOnline(!isOnline); 
-    }
-};
+  };
 
   const fetchOrders = async () => {
     try {
       const response = await api.get('rides/');
-      const activeOrNew = response.data.filter(o => {
-        const s = o.status.toLowerCase();
-        return s === 'requested' || s === 'accepted';
-      });
+      const activeOrNew = response.data.filter(o => ['requested', 'accepted'].includes(o.status.toLowerCase()));
       setOrders(activeOrNew);
-    } catch (error) { 
-      console.error("Fetch error:", error); 
-    }
+
+      const pastJobs = response.data.filter(o => ['completed', 'cancelled'].includes(o.status.toLowerCase()));
+      setHistory(pastJobs);
+    } catch (error) { console.error("Fetch error:", error); }
   };
 
-  // --- Effects ---
   useEffect(() => {
     let interval;
-    // Only start scanning if logged in AND online
     if (userState.isLoggedIn && isOnline) {
       fetchOrders();
       interval = setInterval(fetchOrders, 3000);
-    } else if (!isOnline) {
-      setOrders([]); // Clear requests if offline
     }
     return () => clearInterval(interval);
   }, [userState.isLoggedIn, isOnline]);
 
-  const acceptOrder = async (id) => {
+  const handleLogout = () => {
+    localStorage.removeItem('access_token');
+    setIsOnline(false);
+    setUserState({ isLoggedIn: false, username: '' });
+  };
+
+  const toggleOnline = async () => {
     try {
-      await api.post(`rides/${id}/accept_ride/`);
-      fetchOrders(); 
-    } catch (error) { 
-      alert("Error accepting ride"); 
+      const response = await api.post('users/driver_profile/toggle_status/');
+      setIsOnline(response.data.is_online);
+    } catch (error) {
+      if (error.response?.status === 401) handleLogout();
     }
+  };
+
+  const acceptOrder = async (id) => {
+    try { await api.post(`rides/${id}/accept_ride/`); fetchOrders(); } 
+    catch (e) { alert("Error accepting job"); }
   };
 
   const completeRide = async (id) => {
     try {
       await api.patch(`rides/${id}/`, { status: 'completed' });
       alert("🏁 Trip Finished!");
-      setOrders(prev => prev.filter(o => o.id !== id));
-    } catch (error) { 
-      alert("Error completing ride"); 
-    }
+      fetchOrders();
+      setView('history');
+    } catch (e) { alert("Error"); }
   };
 
-  const moveDriver = async (id) => {
-    const fakeLat = 28.61 + (Math.random() * 0.02);
-    const fakeLng = 77.20 + (Math.random() * 0.02);
-    try {
-      await api.patch(`rides/${id}/`, { driver_lat: fakeLat, driver_lng: fakeLng });
-      console.log(`✅ Moved Order ${id} to: ${fakeLat} / ${fakeLng}`);
-    } catch (error) { 
-      console.error("Move failed:", error.response?.data); 
-    }
-  };
-
-  // --- Render Logic ---
   if (!userState.isLoggedIn) {
     return showLogin ? 
-      <Login onLoginSuccess={handleLogin} switchToSignup={() => setShowLogin(false)} /> : 
-      <Signup onSignupSuccess={handleLogin} />;
+      <Login onLoginSuccess={(u, t) => { localStorage.setItem('access_token', t); setUserState({isLoggedIn: true, username: u}); }} switchToSignup={() => setShowLogin(false)} /> : 
+      <Signup onSignupSuccess={() => setShowLogin(true)} />;
   }
 
   return (
-    <div className="driver-container" style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      
-      {/* 1. Dynamic Header with Toggle */}
-      {/* Replace your current <header> block with this updated version */}
-<header className="header" style={{ 
-    background: isOnline ? '#27ae60' : '#000', 
-    color: '#fff', 
-    padding: '10px 20px', 
-    display: 'flex', 
-    justifyContent: 'space-between', 
-    alignItems: 'center',
-    zIndex: 2000,
-    transition: 'background 0.3s ease'
-}}>
-    <h2 style={{ margin: 0, fontSize: '18px' }}>🚖 Indora Driver</h2>
-    
-    <div style={{ display: 'flex', gap: '10px' }}>
-        {/* Availability Toggle */}
-        <button 
-            onClick={toggleOnline}
-            style={{ 
-                padding: '8px 16px', borderRadius: '20px', border: 'none', 
-                background: '#fff', color: isOnline ? '#27ae60' : '#000',
-                fontWeight: 'bold', cursor: 'pointer', fontSize: '12px'
-            }}
-        >
-            {isOnline ? '🟢 ONLINE' : '⚪ GO ONLINE'}
-        </button>
+    <div className="driver-app">
+      <header className={`app-header ${isOnline ? 'online' : 'offline'}`}>
+        <div className="header-left"><span className="logo-text">INDORA Driver</span></div>
+        <div className="header-right">
+          <button onClick={toggleOnline} className="status-btn">{isOnline ? '🟢 ONLINE' : '⚪ GO ONLINE'}</button>
+          <button onClick={handleLogout} className="logout-btn">Logout</button>
+        </div>
+      </header>
 
-        {/* Logout Action */}
-        <button 
-            onClick={handleLogout}
-            style={{ 
-                padding: '8px 16px', borderRadius: '20px', border: '1px solid white', 
-                background: 'transparent', color: 'white',
-                fontWeight: 'bold', cursor: 'pointer', fontSize: '12px'
-            }}
-        >
-            🚪 LOGOUT
-        </button>
-    </div>
-</header>
+      {!activeRide && isOnline && (
+        <div className="tab-navigation">
+          <button className={view === 'jobs' ? 'active-tab' : ''} onClick={() => setView('jobs')}>Available Jobs</button>
+          <button className={view === 'history' ? 'active-tab' : ''} onClick={() => setView('history')}>Wallet & History</button>
+        </div>
+      )}
 
-      {/* 2. Main Body Content */}
-      <div style={{ flex: 1, position: 'relative' }}>
-        
+      <main className="main-content">
         {activeRide ? (
-          /* --- NAVIGATION MODE (Full Screen) --- */
-          <div className="navigation-mode" style={{ height: '100%', width: '100%' }}>
-            {/* Floating Top Card */}
-            <div style={{ 
-              position: 'absolute', top: '20px', left: '15px', right: '15px', 
-              zIndex: 1000, background: 'white', padding: '20px', borderRadius: '15px', 
-              boxShadow: '0 8px 30px rgba(0,0,0,0.3)', border: '1px solid #eee' 
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ margin: 0, color: '#2ecc71' }}>Active Trip: #{activeRide.id}</h3>
-                <span style={{ fontSize: '12px', background: '#f1f2f6', padding: '4px 8px', borderRadius: '4px', fontWeight: 'bold' }}>OTP: 4592</span>
+          <div className="active-trip-view">
+            <div className="trip-status-card">
+              <div className="card-header">
+                <span className="badge">{getServiceIcon(activeRide.service_type)} {activeRide.service_type}</span>
+                <span className="otp">OTP: 4592</span>
               </div>
-              <p style={{ margin: '12px 0', fontSize: '15px', fontWeight: '500' }}>
-                🏁 {activeRide.dropoff_address || "Navigating to Destination..."}
-              </p>
-              
-              <div style={{ display: 'flex', gap: '12px', marginTop: '15px' }}>
-                <button onClick={() => moveDriver(activeRide.id)} style={{ flex: 1, padding: '12px', background: '#3498db', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  📍 MOVE CAR
-                </button>
-                <button onClick={() => completeRide(activeRide.id)} style={{ flex: 1, padding: '12px', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  🏁 FINISH
-                </button>
-              </div>
+              <p><strong>From:</strong> {activeRide.pickup_address}</p>
+              <p><strong>To:</strong> {activeRide.dropoff_address}</p>
+              <button onClick={() => completeRide(activeRide.id)} className="finish-btn">FINISH RIDE</button>
             </div>
-
-            {/* The Map Component */}
-            <IndoraMap 
-              pickup={activeRide.pickup_lat ? [activeRide.pickup_lat, activeRide.pickup_lng] : null} 
-              dropoff={activeRide.dropoff_lat ? [activeRide.dropoff_lat, activeRide.dropoff_lng] : null}
-              driverLocation={activeRide.driver_lat ? [activeRide.driver_lat, activeRide.driver_lng] : null}
-              routeGeometry={activeRide.route_geometry}
-            />
+            <div className="map-wrapper">
+              <IndoraMap pickup={[activeRide.pickup_lat, activeRide.pickup_lng]} dropoff={[activeRide.dropoff_lat, activeRide.dropoff_lng]} />
+            </div>
           </div>
         ) : (
-          /* --- LIST MODE / OFFLINE VIEW --- */
-          <div style={{ padding: '20px', background: '#f9f9f9', height: '100%', overflowY: 'auto' }}>
-            {!isOnline ? (
-              <div style={{ textAlign: 'center', marginTop: '100px', color: '#666' }}>
-                <div style={{ fontSize: '60px' }}>💤</div>
-                <h3>You are currently Offline</h3>
-                <p>Go online to start receiving ride requests.</p>
+          <div className="content-area">
+            {view === 'jobs' ? (
+              <div className="job-list-view">
+                {!isOnline ? (
+                  <div className="offline-placeholder"><h3>You're Offline</h3><p>Go online to earn</p></div>
+                ) : (
+                  <div className="requests-container">
+                    {orders.filter(o => o.status === 'requested').map(order => (
+                      <div key={order.id} className="job-card">
+                        <div className="job-card-header">
+                          <div className="job-price">₹{order.price}</div>
+                          <div className="service-tag">{getServiceIcon(order.service_type)} {order.service_type}</div>
+                        </div>
+                        <p><strong>From:</strong> {order.pickup_address}</p>
+                        <button onClick={() => acceptOrder(order.id)} className="accept-btn">ACCEPT JOB</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ) : (
-              <>
-                <h2 style={{ fontSize: '22px', marginBottom: '20px' }}>Available Requests</h2>
-                {orders.length === 0 ? (
-                  <div style={{ textAlign: 'center', marginTop: '40px' }}>
-                    <p>Scanning for nearby rides...</p>
-                    <div className="loader"></div>
+              /* --- WALLET & HISTORY VIEW --- */
+              <div className="history-view">
+                <div className="wallet-card">
+                  <h3>My Earnings</h3>
+                  <div className="stats-grid">
+                    <div className="stat-box">
+                      <label>Today</label>
+                      <span className="amount">₹{todayTotal}</span>
+                    </div>
+                    <div className="stat-box">
+                      <label>This Week</label>
+                      <span className="amount">₹{weekTotal}</span>
+                    </div>
+                    <div className="stat-box">
+                      <label>Lifetime</label>
+                      <span className="amount">₹{allTimeTotal}</span>
+                    </div>
                   </div>
-                ) : (
-                  orders.map(order => (
-                    <div key={order.id} className="order-card" style={{ 
-                      border: 'none', 
-                      padding: '20px', 
-                      borderRadius: '15px', 
-                      marginBottom: '15px', 
-                      background: 'white', 
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.05)' 
-                    }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
-                        <span style={{ fontWeight: 'bold', color: '#2ecc71', fontSize: '20px' }}>₹{order.price}</span>
-                        <span style={{ fontSize: '13px', color: '#999', background: '#f8f9fa', padding: '4px 8px', borderRadius: '5px' }}>
-                          {order.distance_km} km
-                        </span>
+                </div>
+
+                <h2 className="section-title">Recent Trips</h2>
+                {history.length === 0 ? <p className="empty-msg">No trips found.</p> : 
+                  history.map(item => (
+                    <div key={item.id} className="history-card">
+                      <div className="history-header">
+                        <span className="date">{new Date(item.created_at).toLocaleDateString()}</span>
+                        <span className="amount">₹{item.price}</span>
                       </div>
-                      <div style={{ fontSize: '14px', color: '#444' }}>
-                        <p style={{ margin: '5px 0' }}>📍 <b>From:</b> {order.pickup_address}</p>
-                        <p style={{ margin: '5px 0' }}>🏁 <b>To:</b> {order.dropoff_address}</p>
-                      </div>
-                      <button 
-                        onClick={() => acceptOrder(order.id)} 
-                        style={{ 
-                          width: '100%', 
-                          marginTop: '15px', 
-                          padding: '14px', 
-                          background: '#27ae60', 
-                          color: 'white', 
-                          border: 'none', 
-                          borderRadius: '10px', 
-                          cursor: 'pointer', 
-                          fontWeight: 'bold',
-                          fontSize: '16px'
-                        }}
-                      >
-                        ACCEPT RIDE
-                      </button>
+                      <p className="address-text">📍 {item.dropoff_address}</p>
+                      <div className={`status-pill ${item.status.toLowerCase()}`}>{item.status}</div>
                     </div>
                   ))
-                )}
-              </>
+                }
+              </div>
             )}
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }
