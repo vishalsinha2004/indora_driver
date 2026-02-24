@@ -14,82 +14,81 @@ function App() {
   });
   const [orders, setOrders] = useState([]);
   const [showLogin, setShowLogin] = useState(true);
-  const [isOnline, setIsOnline] = useState(false); // NEW: Online Status
+  const [isOnline, setIsOnline] = useState(false);
+
+  // --- FIX: Restore Auth Token on Refresh ---
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    const savedUsername = localStorage.getItem('driver_username') || '';
+    const savedOnline = localStorage.getItem('indora_driver_online') === 'true';
+    
+    if (token) {
+      // 1. Put the token back into the API headers so 'Accept Ride' doesn't fail
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      
+      setUserState({
+        isLoggedIn: true,
+        username: savedUsername,
+        isVerified: true
+      });
+      setIsOnline(savedOnline);
+    }
+  }, []);
+  // ------------------------------------------
 
   // 2. Derive active ride from state
   const activeRide = orders.find(o => o.status.toLowerCase() === 'accepted');
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  try {
-    const response = await api.post('auth/login/', { 
-      username: formData.username, // Must match your User model
-      password: formData.password 
-    });
 
-    const token = response.data.access; // SimpleJWT uses 'access'
-    if (token) {
-      onLoginSuccess(formData.username, token);
-    }
-  } catch (error) {
-    console.log("Login Error:", error.response?.data);
-    alert("Invalid credentials. Check Admin if user is Active.");
-  }
-};
   // --- API Handlers ---
- // inside indora_driver/src/App.jsx
+  const handleLogin = (username, token) => {
+    if (!token) {
+      console.error("Login failed: No token provided");
+      return;
+    }
+    
+    localStorage.setItem('access_token', token);
+    localStorage.setItem('driver_username', username); 
+    
+    // 2. Attach token to API headers upon successful login
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`; 
+    
+    setUserState({ 
+      isLoggedIn: true, 
+      username: username, 
+      isVerified: true 
+    });
+  };
 
-const handleLogin = (username, token) => {
-  if (!token) {
-    console.error("Login failed: No token provided");
-    return;
-  }
-  
-  localStorage.setItem('access_token', token);
-  
-  setUserState({ 
-    isLoggedIn: true, 
-    username: username, 
-    isVerified: true 
-  });
-};
+  const handleLogout = () => {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('driver_username');      
+    localStorage.removeItem('indora_driver_online'); 
+    
+    // 3. Completely wipe the token from API headers for security
+    delete api.defaults.headers.common['Authorization'];
+    
+    setIsOnline(false);
+    setUserState({ 
+      isLoggedIn: false, 
+      username: '', 
+      isVerified: false 
+    });
+    setOrders([]);
+    console.log("Logout successful: Token cleared.");
+  };
 
-
-const handleLogout = () => {
-  // 1. Remove the JWT token from browser storage so API calls stop working
-  localStorage.removeItem('access_token');
-  
-  // 2. Force the driver offline for safety
-  setIsOnline(false);
-  
-  // 3. Reset state to trigger the login screen redirect
-  setUserState({ 
-    isLoggedIn: false, 
-    username: '', 
-    isVerified: false 
-  });
-  
-  // 4. Clear the local orders list
-  setOrders([]);
-  
-  console.log("Logout successful: Token cleared.");
-};
-
-
- const toggleOnline = async () => {
-    // Debug: Check if token exists before trying the request
-    const token = localStorage.getItem('access_token');
-    console.log("Current Token:", token);
-
+  const toggleOnline = async () => {
     try {
-        // Updated path to match the router registration
         const response = await api.post('users/driver_profile/toggle_status/'); 
         setIsOnline(response.data.is_online);
+        localStorage.setItem('indora_driver_online', response.data.is_online);
     } catch (error) {
         console.error("Toggle failed:", error.response?.data || error.message);
-        // Fallback for UI testing
-        setIsOnline(!isOnline); 
+        const fallbackStatus = !isOnline;
+        setIsOnline(fallbackStatus); 
+        localStorage.setItem('indora_driver_online', fallbackStatus);
     }
-};
+  };
 
   const fetchOrders = async () => {
     try {
@@ -107,12 +106,11 @@ const handleLogout = () => {
   // --- Effects ---
   useEffect(() => {
     let interval;
-    // Only start scanning if logged in AND online
     if (userState.isLoggedIn && isOnline) {
       fetchOrders();
       interval = setInterval(fetchOrders, 3000);
     } else if (!isOnline) {
-      setOrders([]); // Clear requests if offline
+      setOrders([]); 
     }
     return () => clearInterval(interval);
   }, [userState.isLoggedIn, isOnline]);
@@ -122,7 +120,8 @@ const handleLogout = () => {
       await api.post(`rides/${id}/accept_ride/`);
       fetchOrders(); 
     } catch (error) { 
-      alert("Error accepting ride"); 
+      console.error("Accept Error:", error.response?.data || error.message);
+      alert("Error accepting ride. Check console for details."); 
     }
   };
 
@@ -158,45 +157,42 @@ const handleLogout = () => {
     <div className="driver-container" style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       
       {/* 1. Dynamic Header with Toggle */}
-      {/* Replace your current <header> block with this updated version */}
-<header className="header" style={{ 
-    background: isOnline ? '#27ae60' : '#000', 
-    color: '#fff', 
-    padding: '10px 20px', 
-    display: 'flex', 
-    justifyContent: 'space-between', 
-    alignItems: 'center',
-    zIndex: 2000,
-    transition: 'background 0.3s ease'
-}}>
-    <h2 style={{ margin: 0, fontSize: '18px' }}>🚖 Indora Driver</h2>
-    
-    <div style={{ display: 'flex', gap: '10px' }}>
-        {/* Availability Toggle */}
-        <button 
-            onClick={toggleOnline}
-            style={{ 
-                padding: '8px 16px', borderRadius: '20px', border: 'none', 
-                background: '#fff', color: isOnline ? '#27ae60' : '#000',
-                fontWeight: 'bold', cursor: 'pointer', fontSize: '12px'
-            }}
-        >
-            {isOnline ? '🟢 ONLINE' : '⚪ GO ONLINE'}
-        </button>
+      <header className="header" style={{ 
+          background: isOnline ? '#27ae60' : '#000', 
+          color: '#fff', 
+          padding: '10px 20px', 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          zIndex: 2000,
+          transition: 'background 0.3s ease'
+      }}>
+          <h2 style={{ margin: 0, fontSize: '18px' }}>🚖 Indora Driver</h2>
+          
+          <div style={{ display: 'flex', gap: '10px' }}>
+              <button 
+                  onClick={toggleOnline}
+                  style={{ 
+                      padding: '8px 16px', borderRadius: '20px', border: 'none', 
+                      background: '#fff', color: isOnline ? '#27ae60' : '#000',
+                      fontWeight: 'bold', cursor: 'pointer', fontSize: '12px'
+                  }}
+              >
+                  {isOnline ? '🟢 ONLINE' : '⚪ GO ONLINE'}
+              </button>
 
-        {/* Logout Action */}
-        <button 
-            onClick={handleLogout}
-            style={{ 
-                padding: '8px 16px', borderRadius: '20px', border: '1px solid white', 
-                background: 'transparent', color: 'white',
-                fontWeight: 'bold', cursor: 'pointer', fontSize: '12px'
-            }}
-        >
-            🚪 LOGOUT
-        </button>
-    </div>
-</header>
+              <button 
+                  onClick={handleLogout}
+                  style={{ 
+                      padding: '8px 16px', borderRadius: '20px', border: '1px solid white', 
+                      background: 'transparent', color: 'white',
+                      fontWeight: 'bold', cursor: 'pointer', fontSize: '12px'
+                  }}
+              >
+                  🚪 LOGOUT
+              </button>
+          </div>
+      </header>
 
       {/* 2. Main Body Content */}
       <div style={{ flex: 1, position: 'relative' }}>
