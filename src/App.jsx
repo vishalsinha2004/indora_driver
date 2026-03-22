@@ -25,7 +25,7 @@ function App() {
     const savedUsername = localStorage.getItem('driver_username') || '';
     const savedOnline = localStorage.getItem('indora_driver_online') === 'true';
     
-    const newSocket = io('http://localhost:8000');
+const newSocket = io('https://parceel-backend.onrender.com');
     setSocket(newSocket);
     
     if (token) {
