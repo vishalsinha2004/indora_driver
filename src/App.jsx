@@ -25,8 +25,8 @@ function App() {
     const savedUsername = localStorage.getItem('driver_username') || '';
     const savedOnline = localStorage.getItem('indora_driver_online') === 'true';
     
-    const newSocket = io('http://localhost:8000');
-    setSocket(newSocket);
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+    const newSocket = io(backendUrl);
     
     if (token) {
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
